@@ -3,13 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
-  <title>CNC行ごと翻訳 - LITE-v3-20250827-151241</title>
+  <title>CNC行ごと翻訳 - LITE-v4-20250827-155842</title>
   <style>
     :root { --bg:#fff; --fg:#111827; --muted:#6b7280; --border:#e5e7eb; }
     *{box-sizing:border-box}
     html,body{margin:0;padding:0;font-family:-apple-system,system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial}
     header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--border);padding:8px 12px;z-index:10}
     .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .toolbar select{font:inherit;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:#fff}
     main{display:flex;flex-direction:column;gap:8px;align-items:stretch;padding:8px 12px;max-width:900px;margin:0 auto}
     .panel{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;overflow:hidden}
     .panel header{display:flex;gap:8px;align-items:center;border:0;border-bottom:1px solid var(--border);padding:6px 10px}
@@ -18,7 +19,7 @@
     button{cursor:pointer}
     textarea{width:100%;border:1px solid var(--border);border-radius:8px;padding:10px;
       font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-      font-size:16px; /* iOS入力時ズーム抑止 */ line-height:1.4; height:4.6em; /* 約3行 */}
+      font-size:16px; line-height:1.4; height:4.6em;}
     .out{max-height:45vh;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
     .row{display:flex;border-bottom:1px dashed var(--border)}
     .row:nth-child(even){background:#fafafa}
@@ -34,22 +35,19 @@
   <header>
     <div class="toolbar">
       <strong>CNC行ごと翻訳</strong>
-      <label>機種:
-        <select id="model">
-          <option value="B012-Ⅱ">B012-Ⅱ</option>
-          <option value="B012-Ⅲ">B012-Ⅲ</option>
-          <option value="B012-F">B012-F</option>
-          <option value="B018-Ⅲ">B018-Ⅲ</option>
-          <option value="B0125">B0125</option>
-          <option value="B0125-Ⅱ">B0125-Ⅱ</option>
-          <option value="B0125-Ⅲ">B0125-Ⅲ</option>
-          <option value="BE12">BE12</option>
-          <option value="BE20-V">BE20-V</option>
-          <option value="BS12-Ⅲ">BS12-Ⅲ</option>
-          <option value="BS18-Ⅲ">BS18-Ⅲ</option>
+      <label>ファミリー:
+        <select id="family"></select>
+      </label>
+      <label>バージョン:
+        <select id="variant"></select>
+      </label>
+      <label id="ssLabel" style="display:none">サブスピ:
+        <select id="subspindle">
+          <option value="NoSS">なし</option>
+          <option value="SS">あり</option>
         </select>
       </label>
-      <span class="small">LITE-v3-20250827-151241</span>
+      <span class="small">LITE-v4-20250827-155842</span>
     </div>
   </header>
 
@@ -61,7 +59,7 @@
         <div class="controls">
           <button id="btnTranslate">翻訳（⌘/Ctrl + Enter）</button>
           <button id="btnClear">クリア</button>
-          <span class="small">※ iOSでズームしないよう入力フォントは16px固定</span>
+          <span class="small">※ 入力フォントは16px固定（iOSでズーム防止）</span>
         </div>
       </div>
     </section>
@@ -73,28 +71,53 @@
   </main>
 
   <script>
-    const baseDict = {
-      "G0":"早送り移動","G00":"早送り移動",
-      "G1":"直線補間","G01":"直線補間",
-      "G2":"円弧補間CW","G02":"円弧補間CW",
-      "G3":"円弧補間CCW","G03":"円弧補間CCW",
-      "G4":"ドウェル(一時停止)","G04":"ドウェル(一時停止)",
-      "G28":"原点復帰","G50":"上限回転数設定/スケーリング解除(機種依存)",
-      "G92":"座標/ねじ切り関係(機種依存)","G94":"送り単位 毎分","G95":"送り単位 毎回転",
-      "G96":"定切削速度(CSS)","G97":"回転数指定","G98":"固定サイクル 復帰:初期位置","G99":"固定サイクル 復帰:R点",
+    // --- 機種構成 ---
+    const FAMILIES = [
+      { key: 'B012',   name: 'B012',   variants: ['II','III','F'], subspindleOption: false },
+      { key: 'B018',   name: 'B018',   variants: ['III'],          subspindleOption: false },
+      { key: 'B0125',  name: 'B0125',  variants: ['無印','II','III'], subspindleOption: true },
+      { key: 'BE',     name: 'BE',     variants: ['12','20-V'],    subspindleOption: false },
+      { key: 'BS',     name: 'BS',     variants: ['12-III','18-III'], subspindleOption: false },
+    ];
+
+    // --- 辞書（合成レイヤ）---
+    const dict_base = {
+      "G0":"早送り移動","G00":"早送り移動","G1":"直線補間","G01":"直線補間",
+      "G2":"円弧補間CW","G02":"円弧補間CW","G3":"円弧補間CCW","G03":"円弧補間CCW",
+      "G4":"ドウェル(一時停止)","G04":"ドウェル(一時停止)","G28":"原点復帰",
+      "G94":"送り 毎分","G95":"送り 毎回転","G96":"定切削速度(CSS)","G97":"回転数指定",
+      "G98":"固定サイクル 復帰:初期位置","G99":"固定サイクル 復帰:R点",
       "M0":"プログラム一時停止","M00":"プログラム一時停止","M1":"条件付停止","M01":"条件付停止",
       "M2":"プログラム終了","M02":"プログラム終了","M3":"主軸 正転","M03":"主軸 正転",
-      "M4":"主軸 逆転","M04":"主軸 逆転","M5":"主軸 停止","M05":"主軸 停止","M8":"クーラント ON","M08":"クーラント ON","M9":"クーラント OFF","M09":"クーラント OFF",
-      "M10":"チャック クランプ（機種依存）","M11":"チャック アンクランプ（機種依存）","M60":"バーフィーダ制御（機種依存）","M61":"バーフィーダ制御（機種依存）","M62":"バーフィーダ制御（機種依存）",
+      "M4":"主軸 逆転","M04":"主軸 逆転","M5":"主軸 停止","M05":"主軸 停止",
+      "M8":"クーラント ON","M08":"クーラント ON","M9":"クーラント OFF","M09":"クーラント OFF",
+      "M10":"チャック クランプ（機種依存）","M11":"チャック アンクランプ（機種依存）",
+      "M60":"バーフィーダ制御（機種依存）","M61":"バーフィーダ制御（機種依存）","M62":"バーフィーダ制御（機種依存）",
     };
-    const modelDicts = {"B012-Ⅱ":{},"B012-Ⅲ":{},"B012-F":{},"B018-Ⅲ":{},"B0125":{},"B0125-Ⅱ":{},"B0125-Ⅲ":{},"BE12":{},"BE20-V":{},"BS12-Ⅲ":{},"BS18-Ⅲ":{}};
+    const dict_family = { "B012": {}, "B018": {}, "B0125": {}, "BE": {}, "BS": {} };
+    const dict_option = {
+      "SS": { "M110":"サブ主軸 チャック クランプ（機種依存）","M111":"サブ主軸 チャック アンクランプ（機種依存）" },
+      "NoSS": {}
+    };
+    const dict_model = {
+      // 例: 'B0125-II+SS': { 'M62': 'バーフィーダ 送り（B0125-II）' }
+    };
 
+    function composeDict(familyKey, variant, ss){
+      const base = {...dict_base};
+      const fam  = dict_family[familyKey] || {};
+      const opt  = dict_option[ss] || {};
+      const modelKey = `${familyKey}-${variant}${ss==='SS'?'+SS':''}`;
+      const model = dict_model[modelKey] || {};
+      return {...base, ...fam, ...opt, ...model};
+    }
+
+    // --- Tokenizer & translator ---
     function tokenize(line){
       const commentStripped = line.replace(/\(.*?\)/g, '').trim();
       const cleaned = commentStripped.replace(/;+$/, '');
-      const parts = [];
-      let buf = "";
-      for (let i=0;i<cleaned.length;i++){ const ch = cleaned[i]; if (ch===' '){ if(buf){parts.push(buf); buf="";} } else { buf+=ch; } }
+      const parts = []; let buf = "";
+      for (let i=0;i<cleaned.length;i++){ const ch = cleaned[i]; if (ch===' ') { if(buf){parts.push(buf); buf="";} } else { buf+=ch; } }
       if (buf) parts.push(buf);
       const out = [];
       for (const p of parts){
@@ -107,10 +130,9 @@
       return out.filter(t=>t.length);
     }
 
-    function translateLine(line, model){
+    function translateLine(line, dict){
       const tokens = tokenize(line);
       if (!tokens.length) return ["", false];
-      const dict = {...baseDict, ...(modelDicts[model]||{})};
       const primary = []; const params = []; let unknowns = [];
       for (const tk of tokens){
         const u = tk.toUpperCase();
@@ -132,11 +154,48 @@
       return [name, unknowns.length>0];
     }
 
+    // --- UI init ---
+    const selFamily = document.getElementById('family');
+    const selVariant = document.getElementById('variant');
+    const selSS = document.getElementById('subspindle');
+    const ssLabel = document.getElementById('ssLabel');
+
+    function initSelectors(){
+      selFamily.innerHTML = "";
+      for (const f of FAMILIES){
+        const opt = document.createElement('option');
+        opt.value = f.key; opt.textContent = f.name;
+        selFamily.appendChild(opt);
+      }
+      updateVariant();
+    }
+
+    function updateVariant(){
+      const f = FAMILIES.find(x => x.key === selFamily.value);
+      selVariant.innerHTML = "";
+      for (const v of f.variants){
+        const opt = document.createElement('option');
+        opt.value = v; opt.textContent = v;
+        selVariant.appendChild(opt);
+      }
+      ssLabel.style.display = f.subspindleOption ? 'inline-block' : 'none';
+    }
+
+    selFamily.addEventListener('change', updateVariant);
+
+    function currentDict(){
+      const familyKey = selFamily.value;
+      const variant = selVariant.value;
+      const ss = (ssLabel.style.display !== 'none') ? selSS.value : 'NoSS';
+      return composeDict(familyKey, variant, ss);
+    }
+
     function render(){
+      const dict = currentDict();
       const src = document.getElementById('src').value.replace(/\r\n/g,"\n");
-      const model = document.getElementById('model').value;
       const out = document.getElementById('out'); out.innerHTML='';
-      src.split('\n').forEach(line=>{ const [name, hasUnknown] = translateLine(line, model);
+      src.split('\n').forEach(line=>{
+        const [name, hasUnknown] = translateLine(line, dict);
         const row = document.createElement('div'); row.className='row';
         const c1 = document.createElement('div'); c1.className='cell code'; c1.textContent = line;
         const c2 = document.createElement('div'); c2.className='cell tr'; c2.textContent = name;
@@ -147,9 +206,13 @@
 
     document.getElementById('btnTranslate').addEventListener('click', render);
     document.getElementById('btnClear').addEventListener('click', ()=>{ document.getElementById('src').value=''; document.getElementById('out').innerHTML=''; });
-    document.getElementById('src').addEventListener('keydown', (e)=>{
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { render(); }
-    });
+    document.getElementById('src').addEventListener('keydown', (e)=>{ if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { render(); } });
+
+    // set build tag
+    document.title = document.title.replace('LITE-v4-20250827-155842', 'LITE-v4-20250827-155842');
+    document.querySelector('.small').textContent = document.querySelector('.small').textContent.replace('LITE-v4-20250827-155842', 'LITE-v4-20250827-155842');
+
+    initSelectors();
   </script>
 </body>
 </html>
