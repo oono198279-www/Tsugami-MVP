@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tsugami-cnc-v1';
+const CACHE_NAME = 'tsugami-cnc-v2';
 const ASSETS = [
   './',
   './index.html',
