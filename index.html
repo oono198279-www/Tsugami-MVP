@@ -6,7 +6,7 @@
   <link rel="apple-touch-icon" href="icon.png">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
-  <title>CNC行ごと翻訳 - LITE-v4-20250827-155842</title>
+  <title>CNC行ごと翻訳 - LITE-v5-20250827-234334</title>
   <style>
     :root { --bg:#fff; --fg:#111827; --muted:#6b7280; --border:#e5e7eb; }
     *{box-sizing:border-box}
@@ -14,7 +14,7 @@
     header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--border);padding:8px 12px;z-index:10}
     .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .toolbar select{font:inherit;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:#fff}
-    main{display:flex;flex-direction:column;gap:8px;align-items:stretch;padding:8px 12px;max-width:900px;margin:0 auto}
+    main{display:flex;flex-direction:column;gap:8px;align-items:stretch;padding:8px 12px;max-width:980px;margin:0 auto}
     .panel{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;overflow:hidden}
     .panel header{display:flex;gap:8px;align-items:center;border:0;border-bottom:1px solid var(--border);padding:6px 10px}
     .panel .body{padding:8px 10px}
@@ -23,7 +23,7 @@
     textarea{width:100%;border:1px solid var(--border);border-radius:8px;padding:10px;
       font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
       font-size:16px; line-height:1.4; height:4.6em;}
-    .out{max-height:45vh;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
+    .out{max-height:48vh;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
     .row{display:flex;border-bottom:1px dashed var(--border)}
     .row:nth-child(even){background:#fafafa}
     .cell{padding:6px 8px;white-space:pre-wrap;word-break:break-all}
@@ -38,11 +38,14 @@
   <header>
     <div class="toolbar">
       <strong>CNC行ごと翻訳</strong>
-      <label>ファミリー:
-        <select id="family"></select>
+      <label>メーカー:
+        <select id="maker"></select>
       </label>
-      <label>バージョン:
-        <select id="variant"></select>
+      <label>機種:
+        <select id="model"></select>
+      </label>
+      <label id="verLabel" style="display:none">バージョン:
+        <select id="version"></select>
       </label>
       <label id="ssLabel" style="display:none">回転工具:
         <select id="subspindle">
@@ -50,7 +53,7 @@
           <option value="SS">あり</option>
         </select>
       </label>
-      <span class="small">LITE-v4-20250827-155842</span>
+      <span class="small">LITE-v5-20250827-234334</span>
     </div>
   </header>
 
@@ -58,7 +61,7 @@
     <section class="panel">
       <header><strong>入力（1行＝1ブロック）</strong></header>
       <div class="body">
-        <textarea id="src" placeholder="例）G28U0W0; など、;有り無し<dr>スペース無しOK"></textarea>
+        <textarea id="src" placeholder="例）G28U0W0; などの<br>  ;あり無し・スペース無しOK"></textarea>
         <div class="controls">
           <button id="btnTranslate">翻訳（⌘/Ctrl + Enter）</button>
           <button id="btnClear">クリア</button>
@@ -74,16 +77,26 @@
   </main>
 
   <script>
-    // --- 機種構成 ---
-    const FAMILIES = [
-      { key: 'B012',   name: 'B012',   variants: ['II','III','F'], subspindleOption: false },
-      { key: 'B018',   name: 'B018',   variants: ['III'],          subspindleOption: false },
-      { key: 'B0125',  name: 'B0125',  variants: ['無印','II','III'], subspindleOption: true },
-      { key: 'BE',     name: 'BE',     variants: ['12','20-V'],    subspindleOption: false },
-      { key: 'BS',     name: 'BS',     variants: ['12-III','18-III'], subspindleOption: false },
+    const MAKERS = [
+      { key:'tsugami', name:'ツガミ', models:[
+        { key:'B012',   name:'B012',   versions:['II','III','F'], subspindleOption:false },
+        { key:'B018',   name:'B018',   versions:['III'],          subspindleOption:false },
+        { key:'B0125',  name:'B0125',  versions:['無印','II','III'], subspindleOption:true },
+        { key:'BE',     name:'BE',     versions:['12','20-V'],    subspindleOption:false },
+        { key:'BS',     name:'BS',     versions:['12-III','18-III'], subspindleOption:false },
+      ]},
+      { key:'star', name:'スター精密', models:[
+        { key:'RNC-16',   name:'RNC-16',   versions:[], subspindleOption:false },
+        { key:'RNC-16-II',name:'RNC-16-II',versions:[], subspindleOption:false },
+        { key:'RNC-16B-II',name:'RNC-16B-II',versions:[], subspindleOption:false },
+        { key:'SC-20',    name:'SC-20',    versions:[], subspindleOption:false },
+      ]},
+      { key:'technowasino', name:'テクノワシノ', models:[
+        { key:'G05', name:'G05', versions:[], subspindleOption:false },
+        { key:'LG-6', name:'LG-6', versions:[], subspindleOption:false },
+      ]},
     ];
 
-    // --- 辞書（合成レイヤ）---
     const dict_base = {
       "G0":"早送り移動","G00":"早送り移動","G1":"直線補間","G01":"直線補間",
       "G2":"円弧補間CW","G02":"円弧補間CW","G3":"円弧補間CCW","G03":"円弧補間CCW",
@@ -94,28 +107,24 @@
       "M2":"プログラム終了","M02":"プログラム終了","M3":"主軸 正転","M03":"主軸 正転",
       "M4":"主軸 逆転","M04":"主軸 逆転","M5":"主軸 停止","M05":"主軸 停止",
       "M8":"クーラント ON","M08":"クーラント ON","M9":"クーラント OFF","M09":"クーラント OFF",
-      "M10":"チャック クランプ（機種依存）","M11":"チャック アンクランプ（機種依存）",
+      "M10":"チャック/コレット クランプ（機種依存）",
+      "M11":"チャック/コレット アンクランプ（機種依存）",
       "M60":"バーフィーダ制御（機種依存）","M61":"バーフィーダ制御（機種依存）","M62":"バーフィーダ制御（機種依存）",
     };
-    const dict_family = { "B012": {}, "B018": {}, "B0125": {}, "BE": {}, "BS": {} };
-    const dict_option = {
-      "SS": { "M110":"サブ主軸 チャック クランプ（機種依存）","M111":"サブ主軸 チャック アンクランプ（機種依存）" },
-      "NoSS": {}
-    };
-    const dict_model = {
-      // 例: 'B0125-II+SS': { 'M62': 'バーフィーダ 送り（B0125-II）' }
-    };
 
-    function composeDict(familyKey, variant, ss){
+    const dict_maker = {"tsugami":{}, "star":{}, "technowasino":{}};
+    const dict_model = {};
+    const dict_option = {"SS":{"M110":"サブ主軸 クランプ（機種依存）","M111":"サブ主軸 アンクランプ（機種依存）"},"NoSS":{}};
+
+    function composeDict(makerKey, modelKey, version, ss){
       const base = {...dict_base};
-      const fam  = dict_family[familyKey] || {};
+      const mk   = dict_maker[makerKey] || {};
       const opt  = dict_option[ss] || {};
-      const modelKey = `${familyKey}-${variant}${ss==='SS'?'+SS':''}`;
-      const model = dict_model[modelKey] || {};
-      return {...base, ...fam, ...opt, ...model};
+      const modelId = version ? `${makerKey}:${modelKey}:${version}` : `${makerKey}:${modelKey}`;
+      const md   = dict_model[modelId] || {};
+      return {...base, ...mk, ...opt, ...md};
     }
 
-    // --- Tokenizer & translator ---
     function tokenize(line){
       const commentStripped = line.replace(/\(.*?\)/g, '').trim();
       const cleaned = commentStripped.replace(/;+$/, '');
@@ -157,40 +166,60 @@
       return [name, unknowns.length>0];
     }
 
-    // --- UI init ---
-    const selFamily = document.getElementById('family');
-    const selVariant = document.getElementById('variant');
+    const selMaker = document.getElementById('maker');
+    const selModel = document.getElementById('model');
+    const selVersion = document.getElementById('version');
+    const verLabel = document.getElementById('verLabel');
     const selSS = document.getElementById('subspindle');
     const ssLabel = document.getElementById('ssLabel');
 
     function initSelectors(){
-      selFamily.innerHTML = "";
-      for (const f of FAMILIES){
+      selMaker.innerHTML = "";
+      for (const m of MAKERS){
         const opt = document.createElement('option');
-        opt.value = f.key; opt.textContent = f.name;
-        selFamily.appendChild(opt);
+        opt.value = m.key; opt.textContent = m.name;
+        selMaker.appendChild(opt);
       }
-      updateVariant();
+      updateModel();
     }
 
-    function updateVariant(){
-      const f = FAMILIES.find(x => x.key === selFamily.value);
-      selVariant.innerHTML = "";
-      for (const v of f.variants){
+    function updateModel(){
+      const maker = MAKERS.find(x => x.key === selMaker.value);
+      selModel.innerHTML = "";
+      for (const md of maker.models){
         const opt = document.createElement('option');
-        opt.value = v; opt.textContent = v;
-        selVariant.appendChild(opt);
+        opt.value = md.key; opt.textContent = md.name;
+        selModel.appendChild(opt);
       }
-      ssLabel.style.display = f.subspindleOption ? 'inline-block' : 'none';
+      updateVersionAndSS();
     }
 
-    selFamily.addEventListener('change', updateVariant);
+    function updateVersionAndSS(){
+      const maker = MAKERS.find(x => x.key === selMaker.value);
+      const model = maker.models.find(x => x.key === selModel.value);
+      selVersion.innerHTML = "";
+      if (model.versions && model.versions.length){
+        verLabel.style.display = 'inline-block';
+        for (const v of model.versions){
+          const opt = document.createElement('option');
+          opt.value = v; opt.textContent = v;
+          selVersion.appendChild(opt);
+        }
+      } else {
+        verLabel.style.display = 'none';
+      }
+      ssLabel.style.display = model.subspindleOption ? 'inline-block' : 'none';
+    }
+
+    selMaker.addEventListener('change', updateModel);
+    selModel.addEventListener('change', updateVersionAndSS);
 
     function currentDict(){
-      const familyKey = selFamily.value;
-      const variant = selVariant.value;
+      const makerKey = selMaker.value;
+      const modelKey = selModel.value;
+      const version = (verLabel.style.display !== 'none') ? selVersion.value : "";
       const ss = (ssLabel.style.display !== 'none') ? selSS.value : 'NoSS';
-      return composeDict(familyKey, variant, ss);
+      return composeDict(makerKey, modelKey, version, ss);
     }
 
     function render(){
@@ -210,10 +239,6 @@
     document.getElementById('btnTranslate').addEventListener('click', render);
     document.getElementById('btnClear').addEventListener('click', ()=>{ document.getElementById('src').value=''; document.getElementById('out').innerHTML=''; });
     document.getElementById('src').addEventListener('keydown', (e)=>{ if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { render(); } });
-
-    // set build tag
-    document.title = document.title.replace('LITE-v4-20250827-155842', 'LITE-v4-20250827-155842');
-    document.querySelector('.small').textContent = document.querySelector('.small').textContent.replace('LITE-v4-20250827-155842', 'LITE-v4-20250827-155842');
 
     initSelectors();
   </script>
