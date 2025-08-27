@@ -1,4 +1,4 @@
-// CNC line-by-line translator (Tsugami MVP)
+// CNC line-by-line translator (Tsugami MVP) — semicolon-aware
 
 const baseDict = {
   // G codes (common)
@@ -44,14 +44,11 @@ const baseDict = {
   "M60":"バーフィーダ制御（機種依存）",
   "M61":"バーフィーダ制御（機種依存）",
   "M62":"バーフィーダ制御（機種依存）",
-  // add more as needed
 };
 
 // Model-specific overrides or additions (extendable)
 const modelDicts = {
-  "B012-Ⅱ": {
-    // Example: override names if needed
-  },
+  "B012-Ⅱ": {},
   "B012-Ⅲ": {},
   "B012-F": {},
   "B018-Ⅲ": {},
@@ -64,46 +61,43 @@ const modelDicts = {
   "BS18-Ⅲ": {}
 };
 
-// Simple tokenizer: split by spaces but keep axis words like X12.3, W-60.0, R20.0, S300, F0.25, etc.
+// Simple tokenizer with support for trailing semicolons and glued tokens like G28U0W0
 function tokenize(line){
-  // Remove inline comments in parentheses ( ( ... ) ), keep them separately
-  // We'll not output comments in code-name mode.
+  // Remove inline parentheses comments
   const commentStripped = line.replace(/\(.*?\)/g, '').trim();
+  // strip trailing semicolons so both '...;' and '...' work
+  const cleaned = commentStripped.replace(/;+$/, '');
+
   // Split by spaces; also break chained codes like "G0X10Z2" -> "G0","X10","Z2"
   const parts = [];
   let buf = "";
-  for (let i=0;i<commentStripped.length;i++){
-    const ch = commentStripped[i];
+  for (let i=0;i<cleaned.length;i++){
+    const ch = cleaned[i];
     if (ch === ' ') {
       if (buf) { parts.push(buf); buf=""; }
     } else {
-      // boundary between letter and sign/number may be implicit, we handle later
       buf += ch;
     }
   }
   if (buf) parts.push(buf);
 
-  // Further split tokens if they are glued, e.g., "G0X38.0" -> ["G0","X38.0"]
+  // Further split glued tokens, e.g., "G0X38.0" -> ["G0","X38.0"]
   const out = [];
   for (const p of parts){
-    const m = p.match(/([A-Za-z]+)([-+]?\d.*)?/);
-    if (m && m[1] && m[2] && (p === m[0]) && /^[A-Za-z]$/.test(m[1])===false){
-      // if like "G0X38.0", we try to split at letter-number boundaries
-      // split runs: e.g., G0X10Z2 -> G0, X10, Z2
-      let cur = "";
-      for (let i=0;i<p.length;i++){
-        const ch = p[i];
-        if (/[A-Za-z]/.test(ch) && cur && /[A-Za-z]/.test(cur[cur.length-1])===false){
-          out.push(cur);
-          cur = ch;
-        } else {
-          cur += ch;
-        }
+    // Attempt to split at boundaries where a letter is followed by a number, repeatedly
+    let cur = "";
+    for (let i=0;i<p.length;i++){
+      const ch = p[i];
+      const prev = cur[cur.length-1];
+      const isLetter = /[A-Za-z]/.test(ch);
+      const prevIsLetter = /[A-Za-z]/.test(prev||'');
+      if (isLetter && cur && !prevIsLetter){
+        out.push(cur); cur = ch;
+      } else {
+        cur += ch;
       }
-      if (cur) out.push(cur);
-    } else {
-      out.push(p);
     }
+    if (cur) out.push(cur);
   }
   return out.filter(t => t.length);
 }
@@ -113,7 +107,6 @@ function translateLine(line, model){
   if (tokens.length === 0) return ["", ""];
   const dict = {...baseDict, ...(modelDicts[model]||{})};
 
-  // Extract primary code-names first (G/M/IF/N etc.), then append coordinates/params
   const primary = [];
   const params = [];
   let unknowns = [];
@@ -124,7 +117,6 @@ function translateLine(line, model){
       primary.push(dict[u] || `未登録:${u}`);
       if (!dict[u]) unknowns.push(u);
     } else if (/^[XYZUWIJKRSPFQ][\-+]?[\d\.]+$/i.test(u)){
-      // axis or param with value
       params.push(u.toUpperCase());
     } else if (/^N[\dA-Za-z]+$/i.test(u)){
       primary.push(`ラベル ${u.toUpperCase()}`);
@@ -133,29 +125,22 @@ function translateLine(line, model){
     } else if (/^GOTO[\dA-Za-z]+$/i.test(u)){
       primary.push(`GOTO ${u.slice(4).toUpperCase()}`);
     } else if (/^\#\d+$/i.test(u)){
-      params.push(u); // macro variable reference
+      params.push(u);
     } else if (/^(EQ|NE|GT|LT|GE|LE|\[|\]|AND|OR)$/.test(u)){
       params.push(u);
     } else {
-      // keep as-is (might be composite like GOTO100 or expressions)
-      // try to separate GOTO + label:
       const gto = u.match(/^GOTO(\S+)/);
       if (gto){
         primary.push(`GOTO ${gto[1]}`);
       } else {
-        // unrecognized token
         unknowns.push(u);
         params.push(u);
       }
     }
   }
 
-  // Build compact description:
-  // If multiple primaries, join them with ' ／ '
   let name = primary.join(" ／ ");
-  // Attach params in natural order: X,Y,Z,U,W,I,J,K,R,S,P,F,Q,#nnn ...
   if (params.length){
-    // stable order
     const order = "XYZUWIJKRSPFQ";
     const sorted = params.slice().sort((a,b)=>{
       const ka = order.indexOf(a[0]); const kb = order.indexOf(b[0]);
