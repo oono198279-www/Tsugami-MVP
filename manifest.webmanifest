@@ -1,0 +1,9 @@
+{
+  "name": "CNC行ごと翻訳（ツガミ対応MVP）",
+  "short_name": "CNC翻訳",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": []
+}

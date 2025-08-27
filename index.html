@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CNC行ごと翻訳（ツガミ対応MVP）</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#ffffff">
+  <style>
+    :root {
+      --bg:#ffffff; --fg:#111827; --muted:#6b7280; --border:#e5e7eb;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;font-family:-apple-system,system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial}
+    header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--border);padding:12px 16px;z-index:10}
+    main{display:flex;gap:16px;align-items:stretch;padding:16px;max-width:1200px;margin:0 auto}
+    @media (max-width: 900px){ main{flex-direction:column} }
+    .panel{flex:1;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+    .panel header{display:flex;gap:8px;align-items:center;border:0;border-bottom:1px solid var(--border);padding:8px 12px}
+    .panel .body{padding:0}
+    textarea{width:100%;height:60vh;border:0;outline:0;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;line-height:1.5}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    select,button,input[type="file"]{font:inherit;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:#fff}
+    button{cursor:pointer}
+    .out{height:60vh;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
+    .row{display:flex;border-bottom:1px dashed var(--border)}
+    .row:nth-child(even){background:#fafafa}
+    .cell{padding:8px 10px;white-space:pre}
+    .cell.code{width:50%}
+    .cell.tr{width:50%;border-left:1px solid var(--border)}
+    .small{color:var(--muted);font-size:12px}
+    .pill{border:1px solid var(--border);padding:2px 6px;border-radius:999px;background:#fff}
+    .unknown{background:#fffbea}
+    footer{padding:12px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="toolbar">
+      <strong>CNC行ごと翻訳（ツガミ対応MVP）</strong>
+      <label>機種:
+        <select id="model">
+          <option value="B012-Ⅱ">B012-Ⅱ</option>
+          <option value="B012-Ⅲ">B012-Ⅲ</option>
+          <option value="B012-F">B012-F</option>
+          <option value="B018-Ⅲ">B018-Ⅲ</option>
+          <option value="B0125">B0125</option>
+          <option value="B0125-Ⅱ">B0125-Ⅱ</option>
+          <option value="B0125-Ⅲ">B0125-Ⅲ</option>
+          <option value="BE12">BE12</option>
+          <option value="BE20-V">BE20-V</option>
+          <option value="BS12-Ⅲ">BS12-Ⅲ</option>
+          <option value="BS18-Ⅲ">BS18-Ⅲ</option>
+        </select>
+      </label>
+      <button id="btnTranslate">翻訳</button>
+      <button id="btnClear">クリア</button>
+      <button id="btnExportDict">辞書を書き出し</button>
+      <label class="pill small">辞書を読み込み <input id="importDict" type="file" accept=".json" style="display:none"></label>
+      <button id="btnInstall" style="display:none">インストール</button>
+      <span class="small">PWA対応／オフライン可（初回アクセス後）</span>
+    </div>
+  </header>
+  <main>
+    <section class="panel">
+      <header><strong>入力（1行＝1ブロック）</strong></header>
+      <div class="body">
+        <textarea id="src" placeholder="例）
+M60
+M9
+G0 X38.0 M3 S300
+G98 G1 W-60.0 F1500
+M11
+G04 U0.2
+M62
+M10
+G4 U0.2
+M8
+G04 U1.0
+M61
+IF [#100 EQ 1] GOTO100
+N100
+M3 S4000
+G4 U1.0
+G99
+G1 X-0.7 F0.025
+S500
+"></textarea>
+      </div>
+    </section>
+    <section class="panel">
+      <header>
+        <strong>出力（コード名のみ）</strong>
+        <span class="small">未知は<span class="unknown">黄色</span></span>
+      </header>
+      <div class="body out" id="out"></div>
+    </section>
+  </main>
+  <footer>
+    共通辞書＋機種別辞書で判定。数値はそのまま併記（例：円弧補間 X40.0 Y20.0 R20.0）。未知トークンは「未登録」。
+  </footer>
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+    }
+  </script>
+</body>
+</html>
