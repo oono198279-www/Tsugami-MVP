@@ -72,13 +72,13 @@
         <div class="controls">
           <button id="btnTranslate">翻訳（⌘/Ctrl + Enter）</button>
           <button id="btnClear">クリア</button>
-          <span class="small">※ 入力フォントは16px固定（iOSでズーム防止）</span>
+          <span class="small">※ コード間のスペースや；の有無は不問</span>
         </div>
       </div>
     </section>
 
     <section class="panel">
-      <header><strong>この機種で認識するコード</strong> <span class="small">（選択変更で自動更新）</span></header>
+      <header><strong>この機種で認識するコード</strong> <span class="small">（機種選択毎に自動更新）</span></header>
       <div class="body dictlist" id="dictlist"></div>
     </section>
 
@@ -253,7 +253,7 @@
       }
       section('Gコード', g);
       section('Mコード', m);
-      dictListEl.innerHTML = `<div class="small">※ 選択したメーカー/機種/バージョン/サブスピで翻訳可能なコード名一覧。</div>
+      dictListEl.innerHTML = `<div class="small">※ 選択した機種で翻訳可能なコード名一覧。</div>
         <table>${rows.join('')}</table>`;
     }
 
