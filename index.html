@@ -6,7 +6,7 @@
   <link rel="apple-touch-icon" href="icon.png">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
-  <title>CNC行ごと翻訳 - LITE-v5-20250827-234334</title>
+  <title>CNC行ごと翻訳 - LITE-v5.1-20250828-002646</title>
   <style>
     :root { --bg:#fff; --fg:#111827; --muted:#6b7280; --border:#e5e7eb; }
     *{box-sizing:border-box}
@@ -14,7 +14,9 @@
     header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--border);padding:8px 12px;z-index:10}
     .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .toolbar select{font:inherit;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:#fff}
-    main{display:flex;flex-direction:column;gap:8px;align-items:stretch;padding:8px 12px;max-width:980px;margin:0 auto}
+    main{display:flex;flex-direction:column;gap:8px;align-items:stretch;padding:8px 12px;max-width:1000px;margin:0 auto}
+    .cols{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    @media (max-width: 880px){ .cols{grid-template-columns:1fr} }
     .panel{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;overflow:hidden}
     .panel header{display:flex;gap:8px;align-items:center;border:0;border-bottom:1px solid var(--border);padding:6px 10px}
     .panel .body{padding:8px 10px}
@@ -32,6 +34,11 @@
     .small{color:var(--muted);font-size:12px}
     .unknown{background:#fffbea}
     .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+    .dictlist{max-height:48vh;overflow:auto;font-size:14px}
+    .dictlist table{width:100%;border-collapse:collapse}
+    .dictlist th,.dictlist td{border-bottom:1px dashed var(--border);padding:6px 8px;text-align:left;vertical-align:top}
+    .dictlist tr:nth-child(even){background:#fafafa}
+    .pill{display:inline-block;border:1px solid var(--border);border-radius:999px;padding:2px 8px;margin:2px 6px 2px 0;font-family:ui-monospace,monospace;font-size:12px}
   </style>
 </head>
 <body>
@@ -47,17 +54,17 @@
       <label id="verLabel" style="display:none">バージョン:
         <select id="version"></select>
       </label>
-      <label id="ssLabel" style="display:none">回転工具:
+      <label id="ssLabel" style="display:none">サブスピ:
         <select id="subspindle">
           <option value="NoSS">なし</option>
           <option value="SS">あり</option>
         </select>
       </label>
-      <span class="small">LITE-v5-20250827-234334</span>
+      <span class="small">LITE-v5.1-20250828-002646</span>
     </div>
   </header>
 
-  <main>
+  <main class="cols">
     <section class="panel">
       <header><strong>入力（1行＝1ブロック）</strong></header>
       <div class="body">
@@ -71,6 +78,11 @@
     </section>
 
     <section class="panel">
+      <header><strong>この機種で認識するコード</strong> <span class="small">（選択変更で自動更新）</span></header>
+      <div class="body dictlist" id="dictlist"></div>
+    </section>
+
+    <section class="panel" style="grid-column:1 / -1">
       <header><strong>出力（コード名のみ）</strong> <span class="small">未知は<span class="unknown">黄色</span></span></header>
       <div class="body out" id="out"></div>
     </section>
@@ -172,6 +184,7 @@
     const verLabel = document.getElementById('verLabel');
     const selSS = document.getElementById('subspindle');
     const ssLabel = document.getElementById('ssLabel');
+    const dictListEl = document.getElementById('dictlist');
 
     function initSelectors(){
       selMaker.innerHTML = "";
@@ -209,10 +222,40 @@
         verLabel.style.display = 'none';
       }
       ssLabel.style.display = model.subspindleOption ? 'inline-block' : 'none';
+      renderDictList();
     }
 
     selMaker.addEventListener('change', updateModel);
     selModel.addEventListener('change', updateVersionAndSS);
+    if (selVersion) selVersion.addEventListener('change', renderDictList);
+    if (selSS) selSS.addEventListener('change', renderDictList);
+
+    function currentKeysAndDict(){
+      const makerKey = selMaker.value;
+      const modelKey = selModel.value;
+      const version = (verLabel.style.display !== 'none') ? selVersion.value : "";
+      const ss = (ssLabel.style.display !== 'none') ? selSS.value : 'NoSS';
+      const dict = composeDict(makerKey, modelKey, version, ss);
+      const keys = Object.keys(dict);
+      const g = keys.filter(k => /^G\d+$/.test(k)).sort((a,b)=>parseInt(a.slice(1))-parseInt(b.slice(1)));
+      const m = keys.filter(k => /^M\d+$/.test(k)).sort((a,b)=>parseInt(a.slice(1))-parseInt(b.slice(1)));
+      return {g, m, dict};
+    }
+
+    function renderDictList(){
+      const {g, m, dict} = currentKeysAndDict();
+      const rows = [];
+      function section(title, arr){
+        rows.push(`<tr><th colspan="2">${title}（${arr.length}件）</th></tr>`);
+        for (const k of arr){
+          rows.push(`<tr><td class="pill">${k}</td><td>${dict[k]}</td></tr>`);
+        }
+      }
+      section('Gコード', g);
+      section('Mコード', m);
+      dictListEl.innerHTML = `<div class="small">※ 選択したメーカー/機種/バージョン/サブスピで翻訳可能なコード名一覧。</div>
+        <table>${rows.join('')}</table>`;
+    }
 
     function currentDict(){
       const makerKey = selMaker.value;
@@ -240,7 +283,12 @@
     document.getElementById('btnClear').addEventListener('click', ()=>{ document.getElementById('src').value=''; document.getElementById('out').innerHTML=''; });
     document.getElementById('src').addEventListener('keydown', (e)=>{ if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { render(); } });
 
+    // build tag
+    document.title = document.title.replace('LITE-v5.1-20250828-002646', 'LITE-v5.1-20250828-002646');
+
+    // init
     initSelectors();
+    renderDictList();
   </script>
 </body>
 </html>
